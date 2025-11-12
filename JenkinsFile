@@ -1,61 +1,80 @@
 pipeline {
-    agent any
+  agent any
 
-    stages {
-        stage('Checkout') {
-            steps {
-                // Use correct branch name (master or main)
-                git branch: 'master', url: 'https://github.com/ssvenkatesu/TomcatMavenApp.git'
-            }
-        }
-
-        stage('Build') {
-            steps {
-                echo 'Running Maven build...'
-                dir('TomcatMavenApp') {
-                    sh 'mvn clean compile'
-                }
-            }
-        }
-
-        stage('Test') {
-            steps {
-                echo 'Running Maven tests...'
-                dir('TomcatMavenApp') {
-                    sh 'mvn test'
-                }
-            }
-        }
-
-        stage('Package') {
-            steps {
-                echo 'Packaging the WAR file...'
-                dir('TomcatMavenApp') {
-                    sh 'mvn package'
-                }
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                echo 'Deploying WAR to Tomcat...'
-                dir('TomcatMavenApp/target') {
-                    sh '''
-                        WAR_FILE=$(ls *.war | head -n 1)
-                        echo "Deploying $WAR_FILE to Tomcat..."
-                        sudo cp $WAR_FILE /opt/tomcat/webapps/
-                    '''
-                }
-            }
-        }
+  stages {
+    stage('Checkout SCM') {
+      steps {
+        // check out your repo (adjust branch if needed)
+        git branch: 'master', url: 'https://github.com/ssvenkatesu/TomcatMavenApp.git'
+      }
     }
 
-    post {
-        success {
-            echo '✅ Build, Test, and Deploy stages completed successfully!'
-        }
-        failure {
-            echo '❌ Build failed. Please check the logs for details.'
-        }
+    stage('Debug Workspace') {
+      steps {
+        sh '''
+          echo "=== Debug: workspace ==="
+          pwd
+          ls -la
+          echo "Find pom.xml results:"
+          find . -maxdepth 4 -name pom.xml -print || true
+        '''
+      }
     }
+
+    stage('Find and Build') {
+      steps {
+        script {
+          // run shell to find pom and build
+          def buildCmd = '''
+            set -e
+            POM=$(find . -maxdepth 6 -name pom.xml | head -n 1)
+            if [ -z "$POM" ]; then
+              echo "ERROR: No pom.xml found in workspace"
+              exit 2
+            fi
+            echo "Using POM: $POM"
+            POM_DIR=$(dirname "$POM")
+            echo "Changing directory to $POM_DIR"
+            cd "$POM_DIR"
+            echo "Running mvn clean compile in $(pwd)"
+            mvn -B clean compile
+          '''
+          sh buildCmd
+        }
+      }
+    }
+
+    stage('Test') {
+      steps {
+        sh '''
+          POM=$(find . -maxdepth 6 -name pom.xml | head -n 1)
+          if [ -z "$POM" ]; then
+            echo "No pom found; skipping tests"
+            exit 0
+          fi
+          cd "$(dirname "$POM")"
+          mvn -B test
+        '''
+      }
+    }
+
+    stage('Package') {
+      steps {
+        sh '''
+          POM=$(find . -maxdepth 6 -name pom.xml | head -n 1)
+          if [ -z "$POM" ]; then
+            echo "No pom found; skipping package"
+            exit 0
+          fi
+          cd "$(dirname "$POM")"
+          mvn -B package
+        '''
+      }
+    }
+  }
+
+  post {
+    success { echo '✅ Build pipeline finished successfully' }
+    failure { echo '❌ Build failed - check logs above' }
+  }
 }
