@@ -1,0 +1,61 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout') {
+            steps {
+                // Use correct branch name (master or main)
+                git branch: 'master', url: 'https://github.com/ssvenkatesu/TomcatMavenApp.git'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo 'Running Maven build...'
+                dir('TomcatMavenApp') {
+                    sh 'mvn clean compile'
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Running Maven tests...'
+                dir('TomcatMavenApp') {
+                    sh 'mvn test'
+                }
+            }
+        }
+
+        stage('Package') {
+            steps {
+                echo 'Packaging the WAR file...'
+                dir('TomcatMavenApp') {
+                    sh 'mvn package'
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo 'Deploying WAR to Tomcat...'
+                dir('TomcatMavenApp/target') {
+                    sh '''
+                        WAR_FILE=$(ls *.war | head -n 1)
+                        echo "Deploying $WAR_FILE to Tomcat..."
+                        sudo cp $WAR_FILE /opt/tomcat/webapps/
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ Build, Test, and Deploy stages completed successfully!'
+        }
+        failure {
+            echo '❌ Build failed. Please check the logs for details.'
+        }
+    }
+}
